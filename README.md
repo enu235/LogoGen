@@ -80,6 +80,16 @@ The project includes Docker configuration for easy deployment:
 - `docker-compose.yml`: Complete stack with volume management
 - Automatic dependency installation and optimization
 
+## 📚 Documentation
+
+For detailed documentation, troubleshooting, and advanced features, see the [`docs/`](./docs/) folder:
+
+- **[📋 Complete Documentation Index](./docs/INDEX.md)** - All documentation in one place
+- **[🔧 Troubleshooting Guide](./docs/TROUBLESHOOTING.md)** - Fix common issues and debug problems
+- **[🔐 Security Updates](./docs/SECURITY_UPDATE.md)** - Latest security fixes and status
+- **[🚀 Development Guide](./docs/DEVELOPMENT.md)** - Local development setup
+- **[📦 Deployment Guide](./docs/DEPLOYMENT.md)** - Production deployment instructions
+
 ## License
 
 MIT

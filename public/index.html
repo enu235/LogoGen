@@ -169,16 +169,23 @@
         }
 
         .result {
-            display: none;
+            display: none !important;
             margin-top: 30px;
             padding: 25px;
             background: #f8f9fa;
             border-radius: 12px;
             text-align: center;
+            border: 2px solid #e0e0e0;
         }
 
         .result.show {
-            display: block;
+            display: block !important;
+            animation: fadeIn 0.5s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
         .result img {
@@ -266,6 +273,60 @@
             background: #dee2e6;
         }
 
+        .gallery {
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .gallery h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .gallery-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .gallery-item {
+            background: white;
+            border-radius: 8px;
+            padding: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        .gallery-item img {
+            width: 100%;
+            height: 150px;
+            object-fit: cover;
+            border-radius: 4px;
+            margin-bottom: 8px;
+            cursor: pointer;
+        }
+
+        .gallery-item .item-info {
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        .gallery-refresh {
+            background: #6c757d;
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .gallery-refresh:hover {
+            background: #5a6268;
+        }
+
         @media (max-width: 768px) {
             .header h1 {
                 font-size: 2rem;
@@ -349,6 +410,15 @@
                     <div class="example-prompt" data-prompt="Medical clinic logo with cross symbol">Medical logo</div>
                 </div>
             </div>
+
+            <div class="gallery">
+                <h3>📸 Recently Generated Images</h3>
+                <div id="gallery-container">
+                    <p id="gallery-empty">No images generated yet. Create your first image above!</p>
+                    <div id="gallery-grid" class="gallery-grid"></div>
+                </div>
+                <button onclick="loadGallery()" class="gallery-refresh">Refresh Gallery</button>
+            </div>
         </div>
     </div>
 
@@ -374,8 +444,12 @@
         // Form submission
         document.getElementById('generateForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+            console.log('Form submitted - preventDefault called');
             
             const prompt = document.getElementById('prompt').value.trim();
+            console.log('Prompt value:', prompt);
+            console.log('Selected type:', selectedType);
+            
             if (!prompt) {
                 showError('Please enter a description for your image.');
                 return;
@@ -384,8 +458,10 @@
             showLoading();
             hideError();
             hideResult();
+            console.log('Loading state shown, making API call...');
 
             try {
+                console.log('Making API request...');
                 const response = await fetch('/api/generate', {
                     method: 'POST',
                     headers: {
@@ -397,13 +473,24 @@
                     })
                 });
 
+                console.log('Response received, status:', response.status);
                 const data = await response.json();
+                console.log('API Response:', data);
 
                 if (!response.ok) {
+                    console.error('API Error:', data);
                     throw new Error(data.error || 'Failed to generate image');
                 }
 
+                console.log('Calling showResult with:', data.data);
                 showResult(data.data);
+                
+                // Refresh gallery to show new image
+                setTimeout(() => loadGallery(), 1000);
+                
+                // Clear the form on success
+                document.getElementById('prompt').value = '';
+                
             } catch (error) {
                 console.error('Generation error:', error);
                 showError(error.message || 'Failed to generate image. Please try again.');
@@ -411,6 +498,57 @@
                 hideLoading();
             }
         });
+
+        // Gallery functionality
+        async function loadGallery() {
+            try {
+                console.log('Loading gallery...');
+                const response = await fetch('/api/images');
+                const data = await response.json();
+                
+                if (data.success && data.images && data.images.length > 0) {
+                    displayGallery(data.images);
+                    document.getElementById('gallery-empty').style.display = 'none';
+                } else {
+                    document.getElementById('gallery-empty').style.display = 'block';
+                    document.getElementById('gallery-grid').innerHTML = '';
+                }
+            } catch (error) {
+                console.error('Failed to load gallery:', error);
+                document.getElementById('gallery-empty').textContent = 'Failed to load images.';
+            }
+        }
+
+        function displayGallery(images) {
+            const grid = document.getElementById('gallery-grid');
+            grid.innerHTML = '';
+            
+            images.slice(0, 12).forEach(image => { // Show last 12 images
+                const item = document.createElement('div');
+                item.className = 'gallery-item';
+                
+                const img = document.createElement('img');
+                img.src = image.path;
+                img.alt = `Generated image: ${image.filename}`;
+                img.onclick = () => {
+                    // Show full size image
+                    const newWindow = window.open(image.path, '_blank');
+                    newWindow.focus();
+                };
+                
+                const info = document.createElement('div');
+                info.className = 'item-info';
+                info.innerHTML = `
+                    <div style="margin-bottom: 5px; font-weight: 600;">${image.filename.includes('logo') ? 'Logo' : 'Icon'}</div>
+                    <div style="font-size: 0.8em;">${new Date(image.created).toLocaleDateString()}</div>
+                    <a href="${image.path}" download="${image.filename}" style="color: #667eea; text-decoration: none; font-size: 0.8em;">Download</a>
+                `;
+                
+                item.appendChild(img);
+                item.appendChild(info);
+                grid.appendChild(item);
+            });
+        }
 
         function showLoading() {
             document.getElementById('loading').classList.add('show');
@@ -433,19 +571,45 @@
         }
 
         function showResult(data) {
-            document.getElementById('resultType').textContent = data.imageType.charAt(0).toUpperCase() + data.imageType.slice(1);
-            document.getElementById('resultPrompt').textContent = data.originalPrompt;
-            document.getElementById('resultSize').textContent = `${data.dimensions.width}x${data.dimensions.height}px`;
+            console.log('showResult called with:', data);
             
-            const img = document.getElementById('resultImage');
-            img.src = data.path;
-            img.alt = `Generated ${data.imageType}: ${data.originalPrompt}`;
-            
-            const downloadBtn = document.getElementById('downloadBtn');
-            downloadBtn.href = data.path;
-            downloadBtn.download = data.filename;
-            
-            document.getElementById('result').classList.add('show');
+            try {
+                // Update result information
+                document.getElementById('resultType').textContent = data.imageType.charAt(0).toUpperCase() + data.imageType.slice(1);
+                document.getElementById('resultPrompt').textContent = data.originalPrompt;
+                document.getElementById('resultSize').textContent = `${data.dimensions.width}x${data.dimensions.height}px`;
+                
+                // Handle image loading
+                const img = document.getElementById('resultImage');
+                img.onload = function() {
+                    console.log('Image loaded successfully');
+                };
+                img.onerror = function(e) {
+                    console.error('Image failed to load:', e);
+                    showError('Generated image could not be displayed. You can still download it below.');
+                };
+                img.src = data.path;
+                img.alt = `Generated ${data.imageType}: ${data.originalPrompt}`;
+                console.log('Image src set to:', data.path);
+                
+                // Set up download link
+                const downloadBtn = document.getElementById('downloadBtn');
+                downloadBtn.href = data.path;
+                downloadBtn.download = data.filename;
+                
+                // Show result with explicit display
+                const resultDiv = document.getElementById('result');
+                resultDiv.classList.add('show');
+                resultDiv.style.display = 'block'; // Force display in case CSS fails
+                console.log('Result div should now be visible, classes:', resultDiv.className);
+                
+                // Scroll to result
+                resultDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                
+            } catch (error) {
+                console.error('Error in showResult:', error);
+                showError('Failed to display result: ' + error.message);
+            }
         }
 
         function hideResult() {
@@ -461,6 +625,11 @@
             } catch (error) {
                 console.warn('Could not check server health:', error);
             }
+        });
+
+        // Initial gallery load
+        window.addEventListener('load', () => {
+            loadGallery();
         });
     </script>
 </body>

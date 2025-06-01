@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LogoGen Debug</title>
+</head>
+<body>
+    <h1>LogoGen Debug Page</h1>
+    
+    <div id="test-results"></div>
+    
+    <script>
+        async function debugTest() {
+            const results = document.getElementById('test-results');
+            
+            try {
+                // Test health endpoint
+                results.innerHTML += '<p>Testing health endpoint...</p>';
+                const healthResponse = await fetch('/api/health');
+                const healthData = await healthResponse.json();
+                results.innerHTML += `<p>✅ Health: ${healthData.status}</p>`;
+                
+                // Test generation endpoint
+                results.innerHTML += '<p>Testing generation endpoint...</p>';
+                const genResponse = await fetch('/api/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        prompt: 'red circle',
+                        imageType: 'logo'
+                    })
+                });
+                
+                if (!genResponse.ok) {
+                    throw new Error(`HTTP ${genResponse.status}`);
+                }
+                
+                const genData = await genResponse.json();
+                results.innerHTML += `<p>✅ Generation successful: ${genData.data.filename}</p>`;
+                results.innerHTML += `<img src="${genData.data.path}" style="max-width: 200px;" alt="Test image">`;
+                results.innerHTML += `<p><a href="${genData.data.path}" download="${genData.data.filename}">Download Test Image</a></p>`;
+                
+            } catch (error) {
+                results.innerHTML += `<p>❌ Error: ${error.message}</p>`;
+                console.error('Debug test error:', error);
+            }
+        }
+        
+        // Run test on page load
+        window.addEventListener('load', debugTest);
+    </script>
+</body>
+</html>
