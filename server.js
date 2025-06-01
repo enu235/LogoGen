@@ -1,0 +1,308 @@
+require('dotenv').config();
+const express = require('express');
+const axios = require('axios');
+const sharp = require('sharp');
+const cors = require('cors');
+const helmet = require('helmet');
+const path = require('path');
+const fs = require('fs').promises;
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Security middleware
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "blob:"],
+    },
+  },
+}));
+
+app.use(cors());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.static('public'));
+
+// Create necessary directories
+const createDirectories = async () => {
+  try {
+    await fs.mkdir('public/generated', { recursive: true });
+    await fs.mkdir('temp', { recursive: true });
+  } catch (error) {
+    console.error('Error creating directories:', error);
+  }
+};
+
+createDirectories();
+
+// Configuration
+const API_CONFIG = {
+  baseURL: process.env.API_BASE_URL || 'https://api.x.ai/v1',
+  apiKey: process.env.API_KEY,
+  modelName: process.env.MODEL_NAME || 'grok-vision-beta'
+};
+
+const IMAGE_CONFIG = {
+  logoSize: parseInt(process.env.LOGO_SIZE) || 1024,
+  iconSize: parseInt(process.env.ICON_SIZE) || 64,
+  maxFileSize: parseInt(process.env.MAX_FILE_SIZE) || 10485760
+};
+
+// Validate required environment variables
+if (!API_CONFIG.apiKey) {
+  console.error('ERROR: API_KEY environment variable is required');
+  process.exit(1);
+}
+
+// Image generation function
+const generateImage = async (prompt, imageType = 'logo') => {
+  try {
+    console.log(`Generating ${imageType} with prompt: ${prompt}`);
+    
+    const requestBody = {
+      model: API_CONFIG.modelName,
+      prompt: prompt,
+      n: 1,
+      response_format: 'url'
+    };
+
+    console.log('API Request:', {
+      url: `${API_CONFIG.baseURL}/images/generations`,
+      model: requestBody.model,
+      prompt: requestBody.prompt
+    });
+    
+    const response = await axios.post(
+      `${API_CONFIG.baseURL}/images/generations`,
+      requestBody,
+      {
+        headers: {
+          'Authorization': `Bearer ${API_CONFIG.apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 60000 // 60 second timeout
+      }
+    );
+
+    console.log('API Response status:', response.status);
+    
+    if (response.data && response.data.data && response.data.data[0]) {
+      const imageUrl = response.data.data[0].url;
+      console.log('Generated image URL:', imageUrl);
+      return imageUrl;
+    } else {
+      console.error('Invalid API response format:', response.data);
+      throw new Error('Invalid response format from image generation API');
+    }
+  } catch (error) {
+    console.error('Image generation error details:', {
+      message: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data
+    });
+    
+    if (error.response?.status === 401) {
+      throw new Error('Invalid API key. Please check your API_KEY in the .env file.');
+    } else if (error.response?.status === 429) {
+      throw new Error('Rate limit exceeded. Please try again later.');
+    } else if (error.response?.status === 403) {
+      throw new Error('Access forbidden. Please check your API permissions.');
+    } else {
+      throw new Error(`Failed to generate image: ${error.response?.data?.error?.message || error.message}`);
+    }
+  }
+};
+
+// Download and process image
+const downloadAndProcessImage = async (imageUrl, imageType, originalPrompt) => {
+  try {
+    // Download the image
+    const response = await axios.get(imageUrl, {
+      responseType: 'arraybuffer',
+      timeout: 30000
+    });
+
+    const imageBuffer = Buffer.from(response.data);
+    const timestamp = Date.now();
+    const safePrompt = originalPrompt.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_').substring(0, 50);
+    
+    let processedBuffer;
+    let filename;
+
+    if (imageType === 'icon') {
+      // Process as icon (small size)
+      processedBuffer = await sharp(imageBuffer)
+        .resize(IMAGE_CONFIG.iconSize, IMAGE_CONFIG.iconSize, {
+          fit: 'cover',
+          position: 'center'
+        })
+        .png()
+        .toBuffer();
+      filename = `icon_${safePrompt}_${timestamp}.png`;
+    } else {
+      // Process as logo (larger size, maintain aspect ratio)
+      processedBuffer = await sharp(imageBuffer)
+        .resize(IMAGE_CONFIG.logoSize, IMAGE_CONFIG.logoSize, {
+          fit: 'inside',
+          withoutEnlargement: false
+        })
+        .png()
+        .toBuffer();
+      filename = `logo_${safePrompt}_${timestamp}.png`;
+    }
+
+    // Save the processed image
+    const filepath = path.join('public', 'generated', filename);
+    await fs.writeFile(filepath, processedBuffer);
+
+    return {
+      filename,
+      path: `/generated/${filename}`,
+      size: processedBuffer.length,
+      dimensions: imageType === 'icon' ? 
+        { width: IMAGE_CONFIG.iconSize, height: IMAGE_CONFIG.iconSize } :
+        { width: IMAGE_CONFIG.logoSize, height: IMAGE_CONFIG.logoSize }
+    };
+  } catch (error) {
+    console.error('Image processing error:', error);
+    throw new Error(`Failed to process image: ${error.message}`);
+  }
+};
+
+// Routes
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.post('/api/generate', async (req, res) => {
+  try {
+    const { prompt, imageType } = req.body;
+
+    if (!prompt || !prompt.trim()) {
+      return res.status(400).json({ error: 'Prompt is required' });
+    }
+
+    if (!['logo', 'icon'].includes(imageType)) {
+      return res.status(400).json({ error: 'Image type must be either "logo" or "icon"' });
+    }
+
+    // Enhance prompt based on image type
+    let enhancedPrompt = prompt.trim();
+    if (imageType === 'logo') {
+      enhancedPrompt = `Professional logo design: ${enhancedPrompt}. Clean, modern, suitable for branding, high quality, vector-style`;
+    } else {
+      enhancedPrompt = `Simple icon design: ${enhancedPrompt}. Minimalist, clear, suitable for favicon or app icon, clean lines`;
+    }
+
+    console.log(`Processing request for ${imageType}: ${prompt}`);
+
+    // Generate image
+    const imageUrl = await generateImage(enhancedPrompt, imageType);
+    
+    // Download and process image
+    const processedImage = await downloadAndProcessImage(imageUrl, imageType, prompt);
+
+    res.json({
+      success: true,
+      data: {
+        ...processedImage,
+        originalPrompt: prompt,
+        enhancedPrompt,
+        imageType,
+        generatedAt: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    console.error('Generation endpoint error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to generate image'
+    });
+  }
+});
+
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    config: {
+      apiBaseUrl: API_CONFIG.baseURL,
+      modelName: API_CONFIG.modelName,
+      hasApiKey: !!API_CONFIG.apiKey,
+      logoSize: IMAGE_CONFIG.logoSize,
+      iconSize: IMAGE_CONFIG.iconSize
+    },
+    directories: {
+      generatedExists: require('fs').existsSync('public/generated'),
+      tempExists: require('fs').existsSync('temp')
+    }
+  });
+});
+
+// List generated images endpoint
+app.get('/api/images', async (req, res) => {
+  try {
+    const fs = require('fs').promises;
+    const files = await fs.readdir('public/generated');
+    const imageFiles = files.filter(file => 
+      file.endsWith('.png') || file.endsWith('.jpg') || file.endsWith('.jpeg')
+    );
+    
+    const images = await Promise.all(
+      imageFiles.map(async (filename) => {
+        const stats = await fs.stat(path.join('public/generated', filename));
+        return {
+          filename,
+          path: `/generated/${filename}`,
+          size: stats.size,
+          created: stats.birthtime,
+          modified: stats.mtime
+        };
+      })
+    );
+    
+    res.json({
+      success: true,
+      count: images.length,
+      images: images.sort((a, b) => new Date(b.created) - new Date(a.created))
+    });
+  } catch (error) {
+    console.error('Error listing images:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to list images'
+    });
+  }
+});
+
+// Error handling middleware
+app.use((error, req, res, next) => {
+  console.error('Unhandled error:', error);
+  res.status(500).json({
+    success: false,
+    error: 'Internal server error'
+  });
+});
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    error: 'Not found'
+  });
+});
+
+app.listen(PORT, () => {
+  console.log(`🚀 LogoGen server running on port ${PORT}`);
+  console.log(`📱 Open http://localhost:${PORT} to start generating images`);
+  console.log(`🔧 API Base URL: ${API_CONFIG.baseURL}`);
+  console.log(`🤖 Model: ${API_CONFIG.modelName}`);
+  console.log(`🔑 API Key configured: ${!!API_CONFIG.apiKey}`);
+});
