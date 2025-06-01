@@ -6,7 +6,7 @@
 
 1. **Clone and configure:**
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/enu235/LogoGen.git 
 cd LogoGen
 cp .env.example .env
 ```

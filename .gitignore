@@ -3,6 +3,9 @@
 .env.local
 .env.production
 
+# Configuration files
+prompt-templates.xml
+
 # Node modules
 node_modules/
 npm-debug.log*

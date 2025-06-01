@@ -6,6 +6,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const path = require('path');
 const fs = require('fs').promises;
+const xml2js = require('xml2js');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -52,11 +53,57 @@ const IMAGE_CONFIG = {
   maxFileSize: parseInt(process.env.MAX_FILE_SIZE) || 10485760
 };
 
+// LLM Configuration
+const LLM_CONFIG = {
+  enabled: process.env.ENABLE_PROMPT_ENHANCEMENT === 'true',
+  baseURL: process.env.LLM_API_BASE_URL || process.env.API_BASE_URL || 'https://api.x.ai/v1',
+  apiKey: process.env.LLM_API_KEY || (process.env.USE_SHARED_API_KEY === 'true' ? process.env.API_KEY : null),
+  modelName: process.env.LLM_MODEL_NAME || 'grok-beta',
+  useSharedKey: process.env.USE_SHARED_API_KEY === 'true'
+};
+
 // Validate required environment variables
 if (!API_CONFIG.apiKey) {
   console.error('ERROR: API_KEY environment variable is required');
   process.exit(1);
 }
+
+if (LLM_CONFIG.enabled && !LLM_CONFIG.apiKey) {
+  console.error('ERROR: LLM_API_KEY is required when ENABLE_PROMPT_ENHANCEMENT=true');
+  console.error('Either set LLM_API_KEY or set USE_SHARED_API_KEY=true to use the same API key');
+  process.exit(1);
+}
+
+let promptTemplates = {};
+
+// Load and parse XML prompt templates
+const loadPromptTemplates = async () => {
+  try {
+    const xmlData = await fs.readFile('./prompt-templates.xml', 'utf-8');
+    const parser = new xml2js.Parser({
+      explicitArray: false,
+      mergeAttrs: true,
+      valueProcessors: [xml2js.processors.parseBooleans]
+    });
+    const result = await parser.parseStringPromise(xmlData);
+
+    promptTemplates = result.prompts.prompt.reduce((acc, prompt) => {
+      const type = prompt.type;
+      // Handle CDATA content properly
+      const content = prompt._ ? prompt._.trim() : '';
+      acc[type] = content;
+      return acc;
+    }, {});
+
+    console.log('✅ Prompt templates loaded successfully:', Object.keys(promptTemplates));
+  } catch (error) {
+    console.error('❌ Failed to load prompt templates:', error);
+    process.exit(1);
+  }
+};
+
+// Call this function at server startup
+loadPromptTemplates();
 
 // Image generation function
 const generateImage = async (prompt, imageType = 'logo') => {
@@ -135,6 +182,16 @@ const downloadAndProcessImage = async (imageUrl, imageType, originalPrompt) => {
     const timestamp = Date.now();
     const safePrompt = originalPrompt.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_').substring(0, 50);
     
+    // Create original folder if it doesn't exist
+    const originalDir = path.join('public', 'generated', 'original');
+    await fs.mkdir(originalDir, { recursive: true });
+    
+    // Save original image
+    const originalFilename = `${imageType}_${safePrompt}_${timestamp}_original.png`;
+    const originalFilepath = path.join(originalDir, originalFilename);
+    await fs.writeFile(originalFilepath, imageBuffer);
+    console.log(`Original image saved to: ${originalFilepath}`);
+    
     console.log(`Starting image processing for ${imageType}...`);
     
     let processedBuffer;
@@ -166,7 +223,7 @@ const downloadAndProcessImage = async (imageUrl, imageType, originalPrompt) => {
 
     // Save the processed image
     const filepath = path.join('public', 'generated', filename);
-    console.log(`Saving image to: ${filepath}`);
+    console.log(`Saving processed image to: ${filepath}`);
     await fs.writeFile(filepath, processedBuffer);
     
     console.log(`Image saved successfully: ${filename}`);
@@ -174,6 +231,8 @@ const downloadAndProcessImage = async (imageUrl, imageType, originalPrompt) => {
     return {
       filename,
       path: `/generated/${filename}`,
+      originalFilename,
+      originalPath: `/generated/original/${originalFilename}`,
       size: processedBuffer.length,
       dimensions: imageType === 'icon' ? 
         { width: IMAGE_CONFIG.iconSize, height: IMAGE_CONFIG.iconSize } :
@@ -185,6 +244,88 @@ const downloadAndProcessImage = async (imageUrl, imageType, originalPrompt) => {
   }
 };
 
+// Prompt enhancement function
+const enhancePrompt = async (originalPrompt, imageType) => {
+  if (!LLM_CONFIG.enabled) {
+    console.log('📝 Prompt enhancement disabled, using original prompt');
+    return originalPrompt;
+  }
+
+  try {
+    console.log(`🤖 Enhancing prompt with LLM: ${originalPrompt}`);
+    const systemPrompt = promptTemplates[imageType] || 'Provide a detailed prompt.';
+
+    const requestBody = {
+      model: LLM_CONFIG.modelName,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: originalPrompt }
+      ],
+      max_tokens: 100,
+      temperature: 0.7
+    };
+
+    console.log('LLM Request:', {
+      url: `${LLM_CONFIG.baseURL}/chat/completions`,
+      model: requestBody.model,
+      systemPrompt: requestBody.messages[0].content
+    });
+
+    const response = await axios.post(
+      `${LLM_CONFIG.baseURL}/chat/completions`,
+      requestBody,
+      {
+        headers: {
+          'Authorization': `Bearer ${LLM_CONFIG.apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 30000
+      }
+    );
+
+    if (response.data && response.data.choices && response.data.choices[0]) {
+      const enhancedPrompt = response.data.choices[0].message.content.trim();
+      
+      // Validate enhanced prompt
+      if (!enhancedPrompt || enhancedPrompt.length < 10) {
+        console.warn('⚠️ Enhanced prompt too short or empty, using original');
+        return originalPrompt;
+      }
+      
+      // Check if the enhanced prompt is significantly different
+      if (enhancedPrompt.toLowerCase() === originalPrompt.toLowerCase()) {
+        console.warn('⚠️ Enhanced prompt identical to original, using original');
+        return originalPrompt;
+      }
+      
+      console.log(`✨ Prompt enhanced: "${originalPrompt}" → "${enhancedPrompt}"`);
+      return enhancedPrompt;
+    } else {
+      console.warn('⚠️ Invalid LLM response format:', response.data);
+      return originalPrompt;
+    }
+  } catch (error) {
+    console.error('LLM enhancement error:', {
+      message: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data
+    });
+    
+    // Handle specific error cases
+    if (error.response?.status === 401) {
+      console.error('❌ Invalid LLM API key');
+    } else if (error.response?.status === 429) {
+      console.error('❌ LLM rate limit exceeded');
+    } else if (error.response?.status === 400) {
+      console.error('❌ Invalid LLM request:', error.response?.data);
+    }
+    
+    console.warn('⚠️ Falling back to original prompt due to LLM error');
+    return originalPrompt;
+  }
+};
+
 // Routes
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -192,7 +333,7 @@ app.get('/', (req, res) => {
 
 app.post('/api/generate', async (req, res) => {
   try {
-    const { prompt, imageType } = req.body;
+    const { prompt, imageType = 'logo' } = req.body;
 
     if (!prompt || !prompt.trim()) {
       return res.status(400).json({ error: 'Prompt is required' });
@@ -202,33 +343,34 @@ app.post('/api/generate', async (req, res) => {
       return res.status(400).json({ error: 'Image type must be either "logo" or "icon"' });
     }
 
-    // Enhance prompt based on image type
-    let enhancedPrompt = prompt.trim();
-    if (imageType === 'logo') {
-      enhancedPrompt = `Professional logo design: ${enhancedPrompt}. Clean, modern, suitable for branding, high quality, vector-style`;
-    } else {
-      enhancedPrompt = `Simple icon design: ${enhancedPrompt}. Minimalist, clear, suitable for favicon or app icon, clean lines`;
-    }
+    const originalPrompt = prompt.trim();
+    const enhancedPrompt = await enhancePrompt(originalPrompt, imageType);
+    const finalPrompt = imageType === 'logo'
+      ? `Professional logo design: ${enhancedPrompt}. Clean, modern, suitable for branding, high quality, vector-style`
+      : `Simple icon design: ${enhancedPrompt}. Minimalist, clear, suitable for favicon or app icon, clean lines`;
 
-    console.log(`Processing request for ${imageType}: ${prompt}`);
+    console.log(`Processing request for ${imageType}:`);
+    console.log(`  Original: ${originalPrompt}`);
+    console.log(`  Enhanced: ${enhancedPrompt}`);
+    console.log(`  Final: ${finalPrompt}`);
 
     // Generate image
-    const imageUrl = await generateImage(enhancedPrompt, imageType);
+    const imageUrl = await generateImage(finalPrompt, imageType);
     
     // Download and process image
-    const processedImage = await downloadAndProcessImage(imageUrl, imageType, prompt);
+    const processedImage = await downloadAndProcessImage(imageUrl, imageType, originalPrompt);
 
     res.json({
       success: true,
       data: {
         ...processedImage,
-        originalPrompt: prompt,
-        enhancedPrompt,
+        originalPrompt,
+        enhancedPrompt: LLM_CONFIG.enabled ? enhancedPrompt : null,
+        finalPrompt,
         imageType,
         generatedAt: new Date().toISOString()
       }
     });
-
   } catch (error) {
     console.error('Generation endpoint error:', error);
     res.status(500).json({
@@ -312,8 +454,14 @@ app.use((req, res) => {
 
 app.listen(PORT, () => {
   console.log(`🚀 LogoGen server running on port ${PORT}`);
-  console.log(`📱 Open http://localhost:${PORT} to start generating images`);
   console.log(`🔧 API Base URL: ${API_CONFIG.baseURL}`);
   console.log(`🤖 Model: ${API_CONFIG.modelName}`);
   console.log(`🔑 API Key configured: ${!!API_CONFIG.apiKey}`);
+  console.log(`🧠 LLM Prompt Enhancement: Enabled: ${LLM_CONFIG.enabled}`);
+  if (LLM_CONFIG.enabled) {
+    console.log(`   LLM Base URL: ${LLM_CONFIG.baseURL}`);
+    console.log(`   LLM Model: ${LLM_CONFIG.modelName}`);
+    console.log(`   LLM API Key configured: ${!!LLM_CONFIG.apiKey}`);
+    console.log(`   Using shared API key: ${LLM_CONFIG.useSharedKey}`);
+  }
 });
