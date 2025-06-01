@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frontend Test - LogoGen</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        
+        button:hover {
+            background: #5a6fd8;
+        }
+        
+        .console-output {
+            background: #000;
+            color: #00ff00;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: monospace;
+            margin: 10px 0;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .form-test {
+            background: #f8f9ff;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        
+        input, textarea {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        textarea {
+            height: 80px;
+            resize: vertical;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 LogoGen Frontend Test Suite</h1>
+    
+    <div class="test-section">
+        <h2>JavaScript Console Output</h2>
+        <div id="console-output" class="console-output">Console output will appear here...</div>
+        <button onclick="clearConsole()">Clear Console</button>
+        <button onclick="window.location.reload()">Refresh Page</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>Form Submission Test</h2>
+        <div class="form-test">
+            <form id="testForm">
+                <label>Image Type:</label>
+                <select name="imageType" required>
+                    <option value="logo">Logo</option>
+                    <option value="icon">Icon</option>
+                </select>
+                
+                <label>Prompt:</label>
+                <textarea name="prompt" placeholder="Enter test prompt..." required></textarea>
+                
+                <button type="submit">🧪 Test Form Submission</button>
+            </form>
+        </div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Manual Tests</h2>
+        <button onclick="testJS()">Test JS Function</button>
+        <button onclick="testFormElements()">Test Form Elements</button>
+        <button onclick="testEventListeners()">Test Event Listeners</button>
+        <button onclick="window.open('/', '_blank')">Open Main App</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>Expected Console Messages</h2>
+        <p>When you submit the form, you should see:</p>
+        <ul>
+            <li>🎉 FORM SUBMITTED SUCCESSFULLY!</li>
+            <li>📝 Form data extracted</li>
+            <li>🔄 Simulating API call...</li>
+            <li>✅ Mock API response</li>
+            <li>🎨 Calling showResult with mock data...</li>
+            <li>✨ Form submission process completed</li>
+        </ul>
+    </div>
+
+    <script>
+        // Capture console output
+        const originalLog = console.log;
+        const originalError = console.error;
+        const consoleDiv = document.getElementById('console-output');
+        
+        function addToConsole(type, message) {
+            const timestamp = new Date().toLocaleTimeString();
+            consoleDiv.textContent += `[${timestamp}] ${type}: ${message}\n`;
+            consoleDiv.scrollTop = consoleDiv.scrollHeight;
+        }
+        
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            addToConsole('LOG', args.join(' '));
+        };
+        
+        console.error = function(...args) {
+            originalError.apply(console, args);
+            addToConsole('ERROR', args.join(' '));
+        };
+        
+        function clearConsole() {
+            consoleDiv.textContent = '';
+        }
+        
+        function testJS() {
+            console.log('🧪 JavaScript test function called successfully!');
+            alert('JavaScript is working!');
+        }
+        
+        function testFormElements() {
+            const form = document.getElementById('testForm');
+            const elements = form.elements;
+            console.log('📋 Form elements found:', elements.length);
+            for (let i = 0; i < elements.length; i++) {
+                console.log(`  - ${elements[i].name}: ${elements[i].type}`);
+            }
+        }
+        
+        function testEventListeners() {
+            console.log('🎯 Testing event listeners...');
+            const form = document.getElementById('testForm');
+            const listeners = getEventListeners ? getEventListeners(form) : 'Cannot inspect (DevTools only)';
+            console.log('Event listeners:', listeners);
+        }
+        
+        // Test form submission
+        document.getElementById('testForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            console.log('🎉 TEST FORM SUBMITTED!');
+            
+            const formData = new FormData(this);
+            const imageType = formData.get('imageType');
+            const prompt = formData.get('prompt');
+            
+            console.log('📝 Test form data:');
+            console.log('  - Image Type:', imageType);
+            console.log('  - Prompt:', prompt);
+            console.log('  - Form valid:', this.checkValidity());
+            
+            if (!prompt.trim()) {
+                console.error('❌ Prompt is empty!');
+                return;
+            }
+            
+            console.log('✅ Test form submission successful!');
+        });
+        
+        console.log('🚀 Frontend test page loaded successfully');
+    </script>
+</body>
+</html>
