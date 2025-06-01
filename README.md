@@ -17,7 +17,7 @@ A simple web application for generating logos and icons using AI image generatio
 
 1. Clone this repository:
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/enu235/LogoGen.git
 cd LogoGen
 ```
 

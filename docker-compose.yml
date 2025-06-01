@@ -2,7 +2,10 @@ version: '3.8'
 
 services:
   logogen:
+    # Option 1: Build from current Dockerfile (recommended for development)
     build: .
+    # Option 2: Use pre-built secure image (recommended for production)
+    # image: logogen:secure
     ports:
       - "3000:3000"
     environment:

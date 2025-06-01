@@ -1,5 +1,5 @@
-# Use Node.js LTS version
-FROM node:20-alpine AS builder
+# Use Node.js latest LTS version with security patches
+FROM node:24-alpine AS builder
 
 # Set working directory
 WORKDIR /app
@@ -7,17 +7,20 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
+# Audit dependencies before installing
+RUN npm audit --audit-level high --omit dev || true
+
 # Install dependencies
 RUN npm ci --only=production && npm cache clean --force
 
 # Production stage
-FROM node:20-alpine AS production
+FROM node:24-alpine AS production
 
-# Update Alpine packages to latest versions to reduce vulnerabilities
-RUN apk update && apk upgrade
-
-# Install dumb-init for proper signal handling
-RUN apk add --no-cache dumb-init
+# Update Alpine packages to latest versions and reduce attack surface
+RUN apk update && \
+    apk upgrade && \
+    apk add --no-cache dumb-init && \
+    rm -rf /var/cache/apk/* /tmp/*
 
 # Create app directory and user
 RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
