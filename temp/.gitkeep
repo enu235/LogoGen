@@ -1,0 +1,2 @@
+# This file ensures the temp directory exists in the repository
+# Temporary processing files will be stored here but are excluded from git via .gitignore

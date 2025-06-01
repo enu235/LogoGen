@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LogoGen Generation Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .status { margin: 10px 0; padding: 10px; border-radius: 4px; }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        button { padding: 10px 20px; margin: 10px 0; }
+        img { max-width: 300px; border: 1px solid #ccc; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>LogoGen System Test</h1>
+    
+    <div id="status"></div>
+    
+    <button onclick="testGeneration()">Test Image Generation</button>
+    <button onclick="testGallery()">Test Gallery</button>
+    
+    <div id="result"></div>
+    
+    <script>
+        function addStatus(message, type = 'info') {
+            const status = document.getElementById('status');
+            status.innerHTML += `<div class="status ${type}">${new Date().toLocaleTimeString()}: ${message}</div>`;
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+        
+        async function testGeneration() {
+            addStatus('Starting image generation test...', 'info');
+            
+            try {
+                const response = await fetch('/api/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        prompt: 'simple blue star',
+                        imageType: 'logo'
+                    })
+                });
+                
+                addStatus(`API Response: ${response.status}`, response.ok ? 'success' : 'error');
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    addStatus(`Image generated: ${data.data.filename}`, 'success');
+                    
+                    // Display the image
+                    const result = document.getElementById('result');
+                    result.innerHTML = `
+                        <h3>Generated Image:</h3>
+                        <img src="${data.data.path}" alt="Generated image" onload="addStatus('Image loaded successfully', 'success')" onerror="addStatus('Image failed to load', 'error')">
+                        <p><strong>Filename:</strong> ${data.data.filename}</p>
+                        <p><strong>Size:</strong> ${data.data.size} bytes</p>
+                        <p><strong>Dimensions:</strong> ${data.data.dimensions.width}x${data.data.dimensions.height}px</p>
+                        <p><a href="${data.data.path}" download="${data.data.filename}">Download Image</a></p>
+                    `;
+                } else {
+                    addStatus(`Error: ${data.error}`, 'error');
+                }
+                
+            } catch (error) {
+                addStatus(`Exception: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testGallery() {
+            addStatus('Testing gallery API...', 'info');
+            
+            try {
+                const response = await fetch('/api/images');
+                const data = await response.json();
+                
+                if (response.ok) {
+                    addStatus(`Gallery loaded: ${data.count} images found`, 'success');
+                    
+                    const result = document.getElementById('result');
+                    result.innerHTML = '<h3>Gallery Images:</h3>';
+                    
+                    data.images.slice(0, 5).forEach(img => {
+                        result.innerHTML += `
+                            <div style="margin: 10px 0; padding: 10px; border: 1px solid #ccc;">
+                                <img src="${img.path}" alt="${img.filename}" style="max-width: 150px;">
+                                <p><strong>File:</strong> ${img.filename}</p>
+                                <p><strong>Size:</strong> ${img.size} bytes</p>
+                                <p><strong>Created:</strong> ${new Date(img.created).toLocaleString()}</p>
+                            </div>
+                        `;
+                    });
+                } else {
+                    addStatus(`Gallery error: ${data.error}`, 'error');
+                }
+                
+            } catch (error) {
+                addStatus(`Gallery exception: ${error.message}`, 'error');
+            }
+        }
+        
+        // Auto-test on load
+        window.addEventListener('load', () => {
+            addStatus('LogoGen test page loaded', 'success');
+            testGallery();
+        });
+    </script>
+</body>
+</html>

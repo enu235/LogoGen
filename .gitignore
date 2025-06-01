@@ -80,9 +80,17 @@ jspm_packages/
 # TernJS port file
 .tern-port
 
-# Generated images
+# Generated images and temporary files
 uploads/
 generated/
+
+# Generated images in public directory (but keep directory structure)
+public/generated/*
+!public/generated/.gitkeep
+
+# Temporary processing files (but keep directory structure)  
+temp/*
+!temp/.gitkeep
 
 # IDE
 .vscode/

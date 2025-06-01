@@ -40,9 +40,23 @@ MAX_FILE_SIZE=10485760
 
 ### 3. Deploy with Docker Compose
 
+**Option A: Filesystem Storage (Recommended)**
+
+Create required directories for persistent storage:
+```bash
+mkdir -p public/generated temp
+```
+
 Start the application:
 ```bash
 docker-compose up -d
+```
+
+**Option B: Docker Volumes**
+
+Use Docker volumes instead of bind mounts:
+```bash
+docker-compose -f docker-compose.volumes.yml up -d
 ```
 
 Check status:
@@ -153,14 +167,31 @@ docker stats logogen_logogen_1
 
 ### Backup Generated Images
 
-Images are stored in a Docker volume. To backup:
+**For Filesystem Storage (default):**
+Images are stored directly on the local filesystem. To backup:
+```bash
+# Simple tar backup
+tar czf images-backup-$(date +%Y%m%d).tar.gz public/generated/
+
+# Or copy to backup location
+cp -r public/generated/ /path/to/backup/location/
+```
+
+**For Docker Volumes:**
+If using `docker-compose.volumes.yml`, backup the Docker volume:
 ```bash
 docker run --rm -v logogen_generated_images:/data -v $(pwd):/backup alpine tar czf /backup/images-backup-$(date +%Y%m%d).tar.gz -C /data .
 ```
 
 ### Clean Up Old Images
 
+**For Filesystem Storage:**
 Remove images older than 30 days:
+```bash
+find public/generated -name "*.png" -mtime +30 -delete
+```
+
+**For Docker Volumes:**
 ```bash
 docker exec logogen_logogen_1 find /app/public/generated -name "*.png" -mtime +30 -delete
 ```

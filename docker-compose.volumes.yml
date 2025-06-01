@@ -1,0 +1,29 @@
+# Alternative Docker Compose configuration using Docker volumes
+# Use this if you prefer Docker volume management over bind mounts
+# Usage: docker-compose -f docker-compose.volumes.yml up
+
+services:
+  logogen:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+    env_file:
+      - .env
+    volumes:
+      - generated_images:/app/public/generated
+      - temp_files:/app/temp
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  generated_images:
+    driver: local
+  temp_files:
+    driver: local

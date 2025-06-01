@@ -33,12 +33,21 @@ API_BASE_URL=https://api.x.ai/v1
 MODEL_NAME=grok-vision-beta
 ```
 
-4. Run with Docker Compose:
+4. Create required directories (for filesystem storage):
 ```bash
-docker-compose up
+mkdir -p public/generated temp
 ```
 
-5. Open your browser to `http://localhost:3000`
+5. Run with Docker Compose:
+```bash
+# Default: Uses filesystem bind mounts (recommended)
+docker-compose up
+
+# Alternative: Use Docker volumes instead
+docker-compose -f docker-compose.volumes.yml up
+```
+
+6. Open your browser to `http://localhost:3000`
 
 ### Local Development
 
@@ -77,8 +86,15 @@ The application automatically handles:
 
 The project includes Docker configuration for easy deployment:
 - `Dockerfile`: Multi-stage build for optimized production image
-- `docker-compose.yml`: Complete stack with volume management
+- `docker-compose.yml`: Complete stack with filesystem bind mounts for persistent storage (default)
+- `docker-compose.volumes.yml`: Alternative configuration using Docker volumes
+- Generated images are stored directly on the local filesystem in `./public/generated/` (default)
+- Temporary files are stored in `./temp/` for easy access and backup
 - Automatic dependency installation and optimization
+
+**Storage Options:**
+- **Filesystem bind mounts** (default): Images saved directly to local filesystem, immediately accessible
+- **Docker volumes**: Traditional Docker volume management, use `-f docker-compose.volumes.yml`
 
 ## 📚 Documentation
 

@@ -26,10 +26,17 @@ Welcome to the LogoGen documentation! This folder contains comprehensive guides 
 ## 🔧 Configuration Files
 
 Located in the root directory:
-- `docker-compose.yml` - Container orchestration
+- `docker-compose.yml` - Container orchestration (filesystem storage)
+- `docker-compose.volumes.yml` - Alternative configuration (Docker volumes)
 - `Dockerfile` - Container build configuration
 - `.env.example` - Environment variables template
 - `package.json` - Node.js dependencies
+
+## 📦 Storage Options
+
+LogoGen supports two storage configurations:
+- **Filesystem Storage** (default): Images saved to `./public/generated/` for immediate access
+- **Docker Volumes**: Traditional volume management using `docker-compose.volumes.yml`
 
 ## 📁 Project Structure
 

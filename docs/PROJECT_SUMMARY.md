@@ -127,7 +127,7 @@ npm run docker:up # Start with Docker Compose
 - **Environment Management**: Proper configuration separation
 - **Security Hardening**: Production security best practices
 - **Scalability**: Ready for load balancing and horizontal scaling
-- **Backup Strategy**: Volume management for persistent data
+- **Backup Strategy**: Filesystem-based storage for easy backup and access
 
 ## 🔧 Customization
 

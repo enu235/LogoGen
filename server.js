@@ -121,15 +121,21 @@ const generateImage = async (prompt, imageType = 'logo') => {
 // Download and process image
 const downloadAndProcessImage = async (imageUrl, imageType, originalPrompt) => {
   try {
+    console.log(`Starting download from: ${imageUrl}`);
+    
     // Download the image
     const response = await axios.get(imageUrl, {
       responseType: 'arraybuffer',
-      timeout: 30000
+      timeout: 45000 // Increased timeout
     });
 
+    console.log(`Download completed, size: ${response.data.byteLength} bytes`);
+    
     const imageBuffer = Buffer.from(response.data);
     const timestamp = Date.now();
     const safePrompt = originalPrompt.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_').substring(0, 50);
+    
+    console.log(`Starting image processing for ${imageType}...`);
     
     let processedBuffer;
     let filename;
@@ -156,9 +162,14 @@ const downloadAndProcessImage = async (imageUrl, imageType, originalPrompt) => {
       filename = `logo_${safePrompt}_${timestamp}.png`;
     }
 
+    console.log(`Image processed successfully, processed size: ${processedBuffer.length} bytes`);
+
     // Save the processed image
     const filepath = path.join('public', 'generated', filename);
+    console.log(`Saving image to: ${filepath}`);
     await fs.writeFile(filepath, processedBuffer);
+    
+    console.log(`Image saved successfully: ${filename}`);
 
     return {
       filename,
