@@ -10,6 +10,7 @@ A simple web application for generating logos and icons using AI image generatio
 - 🔧 Environment-based configuration
 - 🐳 Docker support for easy deployment
 - 🔒 Secure API key management
+- ✨ Optional prompt enhancement using an LLM (Large Language Models)
 
 ## Quick Start
 
@@ -69,6 +70,9 @@ npm run dev
 - `API_BASE_URL`: Base URL for the API (default: https://api.x.ai/v1)
 - `MODEL_NAME`: Model name to use for generation (default: grok-vision-beta)
 - `PORT`: Port to run the server on (default: 3000)
+- `ENABLE_PROMPT_ENHANCEMENT`: Set to `true` to enable prompt enhancement with LLM, `false` to disable
+- `LLM_API_KEY`, `LLM_API_BASE_URL`, `LLM_MODEL_NAME`: LLM settings for prompt enhancement
+- `USE_SHARED_API_KEY`: Set to `true` to use the same API key for both image and LLM if supported
 
 ## Usage
 
@@ -81,6 +85,12 @@ npm run dev
 The application automatically handles:
 - Logo generation: Creates high-resolution images suitable for branding
 - Icon generation: Creates smaller images optimized for favicons and app icons
+
+### Prompt Enhancement
+
+- If enabled, users will see a checkbox in the UI to opt-in/out of prompt enhancement.
+- If disabled, the UI will show a message that prompt enhancement is disabled by server configuration.
+- The backend will only enhance prompts if both the config and the checkbox are enabled.
 
 ## Docker Support
 
@@ -95,6 +105,24 @@ The project includes Docker configuration for easy deployment:
 **Storage Options:**
 - **Filesystem bind mounts** (default): Images saved directly to local filesystem, immediately accessible
 - **Docker volumes**: Traditional Docker volume management, use `-f docker-compose.volumes.yml`
+
+## API Endpoints
+
+- `POST /api/generate` — Generate a logo or icon
+- `GET /api/images` — List generated images
+- `GET /api/health` — Health and configuration status
+
+## Development
+
+See `docs/DEVELOPMENT.md` for more details.
+
+## Local Testing
+
+- Use `test.sh` for local/CI pre-flight and endpoint checks:
+  ```
+  ./test.sh
+  ```
+- This script is not required for Docker or production use.
 
 ## 📚 Documentation
 

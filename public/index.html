@@ -442,6 +442,10 @@
                     </div>
                 </div>
 
+                <div class="form-group" id="enhancePromptGroup">
+                    <!-- Enhancement checkbox or message will be injected here -->
+                </div>
+
                 <button type="submit" class="generate-btn" id="generateBtn">
                     Generate Image
                 </button>
@@ -729,6 +733,24 @@
                 });
             });
 
+            // Enhancement prompt UI setup
+            async function setupEnhancePromptUI() {
+                const group = document.getElementById('enhancePromptGroup');
+                if (!group) return;
+                try {
+                    const res = await fetch('/api/health');
+                    const data = await res.json();
+                    const enabled = data.config.llmEnhancement?.enabled;
+                    group.innerHTML = enabled
+                      ? `<label style="font-weight:400;display:flex;align-items:center;gap:8px;"><input type="checkbox" id="enhancePromptCheckbox" checked style="width:18px;height:18px;"> Enhance prompt with AI <span style='color:#667eea;font-size:0.9em;'>(recommended)</span></label>`
+                      : `<div style='color:#888;font-size:0.95em;padding:8px 0 0 0;'>Prompt enhancement is <b>disabled</b> by server configuration.</div>`;
+                } catch (e) {
+                    group.innerHTML = `<div style='color:#c00;'>Could not check enhancement status.</div>`;
+                }
+            }
+
+            setupEnhancePromptUI();
+
             // Form submission - LIVE MODE
             document.getElementById('generateForm').addEventListener('submit', async function(e) {
                 e.preventDefault();
@@ -751,13 +773,17 @@
                         throw new Error('Please enter a description for your image');
                     }
                     
+                    let enhancePrompt = true;
+                    const enhancePromptCheckbox = document.getElementById('enhancePromptCheckbox');
+                    if (enhancePromptCheckbox) enhancePrompt = enhancePromptCheckbox.checked;
+                    
                     console.log('📡 Submitting generation request to /api/generate...');
                     const response = await fetch('/api/generate', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                         },
-                        body: JSON.stringify({ imageType, prompt }),
+                        body: JSON.stringify({ imageType, prompt, enhancePrompt }),
                     });
 
                     console.log('Raw response from /api/generate:', response);

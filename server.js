@@ -244,32 +244,18 @@ const downloadAndProcessImage = async (imageUrl, imageType, originalPrompt) => {
 // Prompt enhancement function
 const enhancePrompt = async (originalPrompt, imageType) => {
   if (!LLM_CONFIG.enabled) {
-    console.log('📝 Prompt enhancement disabled, using original prompt');
     return originalPrompt;
   }
-
   try {
-    console.log(`🤖 Enhancing prompt with LLM: ${originalPrompt}`);
-    console.log('📋 Using template type:', imageType);
-    
     const template = promptTemplates[imageType] || promptTemplates.logo;
     const prompt = template.replace('${prompt}', originalPrompt);
-    console.log('🔍 Using prompt template:', prompt);
-
     const requestBody = {
       model: LLM_CONFIG.modelName,
       prompt: prompt,
       max_tokens: 100,
       temperature: 0.7,
-      stop: ["\n", "```"]  // Stop generation at newlines or code blocks
+      stop: ["\n", "```"]
     };
-
-    console.log('📤 LLM Request:', {
-      url: `${LLM_CONFIG.baseURL}/completions`,
-      model: requestBody.model,
-      prompt: requestBody.prompt
-    });
-
     const response = await axios.post(
       `${LLM_CONFIG.baseURL}/completions`,
       requestBody,
@@ -281,60 +267,15 @@ const enhancePrompt = async (originalPrompt, imageType) => {
         timeout: 30000
       }
     );
-
-    console.log('📥 LLM Response:', {
-      status: response.status,
-      headers: response.headers,
-      data: JSON.stringify(response.data, null, 2)
-    });
-
-    console.log('📥 Response data type:', typeof response.data);
-    if (response.data) {
-      console.log('📥 Response data keys:', Object.keys(response.data));
-    }
-
-    // Handle x.ai API response format
     if (response.data?.choices?.[0]?.text) {
       const enhancedPrompt = response.data.choices[0].text.trim();
-      
-      // Validate enhanced prompt
-      if (!enhancedPrompt || enhancedPrompt.length < 10) {
-        console.warn('⚠️ Enhanced prompt too short or empty, using original');
-        return originalPrompt;
-      }
-      
-      // Check if the enhanced prompt is significantly different and not just a repeat
-      if (enhancedPrompt.toLowerCase() === originalPrompt.toLowerCase() ||
-          enhancedPrompt.toLowerCase().includes('enhance this design prompt')) {
-        console.warn('⚠️ Enhanced prompt identical or invalid, using original');
-        return originalPrompt;
-      }
-      
-      console.log(`✨ Prompt enhanced: "${originalPrompt}" → "${enhancedPrompt}"`);
+      if (!enhancedPrompt || enhancedPrompt.length < 10) return originalPrompt;
+      if (enhancedPrompt.toLowerCase() === originalPrompt.toLowerCase() || enhancedPrompt.toLowerCase().includes('enhance this design prompt')) return originalPrompt;
       return enhancedPrompt;
     } else {
-      console.warn('⚠️ Invalid LLM response format:', response.data);
       return originalPrompt;
     }
   } catch (error) {
-    console.error('🚨 LLM enhancement error:', {
-      message: error.message,
-      status: error.response?.status,
-      statusText: error.response?.statusText,
-      data: error.response?.data,
-      stack: error.stack
-    });
-    
-    // Handle specific error cases
-    if (error.response?.status === 401) {
-      console.error('❌ Invalid LLM API key');
-    } else if (error.response?.status === 429) {
-      console.error('❌ LLM rate limit exceeded');
-    } else if (error.response?.status === 400) {
-      console.error('❌ Invalid LLM request:', error.response?.data);
-    }
-    
-    console.warn('⚠️ Falling back to original prompt due to LLM error');
     return originalPrompt;
   }
 };
@@ -346,33 +287,23 @@ app.get('/', (req, res) => {
 
 app.post('/api/generate', async (req, res) => {
   try {
-    const { prompt, imageType = 'logo' } = req.body;
-
+    const { prompt, imageType = 'logo', enhancePrompt: enhancePromptFlag } = req.body;
     if (!prompt || !prompt.trim()) {
       return res.status(400).json({ error: 'Prompt is required' });
     }
-
     if (!['logo', 'icon'].includes(imageType)) {
       return res.status(400).json({ error: 'Image type must be either "logo" or "icon"' });
     }
-
     const originalPrompt = prompt.trim();
-    const enhancedPrompt = await enhancePrompt(originalPrompt, imageType);
+    let enhancedPrompt = originalPrompt;
+    if (LLM_CONFIG.enabled && (enhancePromptFlag === undefined || enhancePromptFlag === true || enhancePromptFlag === 'true')) {
+      enhancedPrompt = await enhancePrompt(originalPrompt, imageType);
+    }
     const finalPrompt = imageType === 'logo'
       ? `Professional logo design: ${enhancedPrompt}. Clean, modern, suitable for branding, high quality, vector-style`
       : `Simple icon design: ${enhancedPrompt}. Minimalist, clear, suitable for favicon or app icon, clean lines`;
-
-    console.log(`Processing request for ${imageType}:`);
-    console.log(`  Original: ${originalPrompt}`);
-    console.log(`  Enhanced: ${enhancedPrompt}`);
-    console.log(`  Final: ${finalPrompt}`);
-
-    // Generate image
     const imageUrl = await generateImage(finalPrompt, imageType);
-    
-    // Download and process image
     const processedImage = await downloadAndProcessImage(imageUrl, imageType, originalPrompt);
-
     res.json({
       success: true,
       data: {
@@ -385,7 +316,6 @@ app.post('/api/generate', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Generation endpoint error:', error);
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to generate image'
@@ -403,7 +333,14 @@ app.get('/api/health', (req, res) => {
       modelName: API_CONFIG.modelName,
       hasApiKey: !!API_CONFIG.apiKey,
       logoSize: IMAGE_CONFIG.logoSize,
-      iconSize: IMAGE_CONFIG.iconSize
+      iconSize: IMAGE_CONFIG.iconSize,
+      llmEnhancement: {
+        enabled: LLM_CONFIG.enabled,
+        llmBaseUrl: LLM_CONFIG.baseURL,
+        llmModel: LLM_CONFIG.modelName,
+        hasLlmApiKey: !!LLM_CONFIG.apiKey,
+        usingSharedKey: LLM_CONFIG.useSharedKey
+      }
     },
     directories: {
       generatedExists: require('fs').existsSync('public/generated'),
@@ -444,46 +381,6 @@ app.get('/api/images', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to list images'
-    });
-  }
-});
-
-// Test endpoint for LLM enhancement
-app.post('/api/test-enhance', async (req, res) => {
-  try {
-    const { prompt, imageType = 'logo' } = req.body;
-
-    if (!prompt || !prompt.trim()) {
-      return res.status(400).json({ error: 'Prompt is required' });
-    }
-
-    if (!['logo', 'icon'].includes(imageType)) {
-      return res.status(400).json({ error: 'Image type must be either "logo" or "icon"' });
-    }
-
-    const originalPrompt = prompt.trim();
-    const enhancedPrompt = await enhancePrompt(originalPrompt, imageType);
-
-    res.json({
-      success: true,
-      data: {
-        originalPrompt,
-        enhancedPrompt,
-        imageType,
-        llmConfig: {
-          enabled: LLM_CONFIG.enabled,
-          model: LLM_CONFIG.modelName,
-          baseURL: LLM_CONFIG.baseURL,
-          hasKey: !!LLM_CONFIG.apiKey,
-          useSharedKey: LLM_CONFIG.useSharedKey
-        }
-      }
-    });
-  } catch (error) {
-    console.error('Enhancement test error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to test prompt enhancement'
     });
   }
 });
