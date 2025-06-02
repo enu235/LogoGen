@@ -12,7 +12,7 @@
 
 Clone the repository:
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/enu235/LogoGen.git
 cd LogoGen
 ```
 
