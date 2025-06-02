@@ -5,6 +5,7 @@
 
 # Configuration files
 prompt-templates.xml
+prompt-templates.json
 
 # Node modules
 node_modules/

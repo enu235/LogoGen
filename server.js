@@ -57,10 +57,21 @@ const IMAGE_CONFIG = {
 const LLM_CONFIG = {
   enabled: process.env.ENABLE_PROMPT_ENHANCEMENT === 'true',
   baseURL: process.env.LLM_API_BASE_URL || process.env.API_BASE_URL || 'https://api.x.ai/v1',
-  apiKey: process.env.LLM_API_KEY || (process.env.USE_SHARED_API_KEY === 'true' ? process.env.API_KEY : null),
   modelName: process.env.LLM_MODEL_NAME || 'grok-beta',
   useSharedKey: process.env.USE_SHARED_API_KEY === 'true'
 };
+
+// Set the API key with proper shared key handling
+const llmKey = process.env.LLM_API_KEY;
+const isPlaceholder = !llmKey || llmKey.includes('your_') || llmKey === 'your_llm_api_key_here';
+
+if (LLM_CONFIG.useSharedKey) {
+  LLM_CONFIG.apiKey = process.env.API_KEY;
+} else if (!isPlaceholder) {
+  LLM_CONFIG.apiKey = llmKey;
+} else {
+  LLM_CONFIG.apiKey = null;
+}
 
 // Validate required environment variables
 if (!API_CONFIG.apiKey) {
@@ -76,25 +87,11 @@ if (LLM_CONFIG.enabled && !LLM_CONFIG.apiKey) {
 
 let promptTemplates = {};
 
-// Load and parse XML prompt templates
+// Load prompt templates
 const loadPromptTemplates = async () => {
   try {
-    const xmlData = await fs.readFile('./prompt-templates.xml', 'utf-8');
-    const parser = new xml2js.Parser({
-      explicitArray: false,
-      mergeAttrs: true,
-      valueProcessors: [xml2js.processors.parseBooleans]
-    });
-    const result = await parser.parseStringPromise(xmlData);
-
-    promptTemplates = result.prompts.prompt.reduce((acc, prompt) => {
-      const type = prompt.type;
-      // Handle CDATA content properly
-      const content = prompt._ ? prompt._.trim() : '';
-      acc[type] = content;
-      return acc;
-    }, {});
-
+    const jsonData = await fs.readFile('./prompt-templates.json', 'utf-8');
+    promptTemplates = JSON.parse(jsonData);
     console.log('✅ Prompt templates loaded successfully:', Object.keys(promptTemplates));
   } catch (error) {
     console.error('❌ Failed to load prompt templates:', error);
@@ -253,26 +250,28 @@ const enhancePrompt = async (originalPrompt, imageType) => {
 
   try {
     console.log(`🤖 Enhancing prompt with LLM: ${originalPrompt}`);
-    const systemPrompt = promptTemplates[imageType] || 'Provide a detailed prompt.';
+    console.log('📋 Using template type:', imageType);
+    
+    const template = promptTemplates[imageType] || promptTemplates.logo;
+    const prompt = template.replace('${prompt}', originalPrompt);
+    console.log('🔍 Using prompt template:', prompt);
 
     const requestBody = {
       model: LLM_CONFIG.modelName,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: originalPrompt }
-      ],
+      prompt: prompt,
       max_tokens: 100,
-      temperature: 0.7
+      temperature: 0.7,
+      stop: ["\n", "```"]  // Stop generation at newlines or code blocks
     };
 
-    console.log('LLM Request:', {
-      url: `${LLM_CONFIG.baseURL}/chat/completions`,
+    console.log('📤 LLM Request:', {
+      url: `${LLM_CONFIG.baseURL}/completions`,
       model: requestBody.model,
-      systemPrompt: requestBody.messages[0].content
+      prompt: requestBody.prompt
     });
 
     const response = await axios.post(
-      `${LLM_CONFIG.baseURL}/chat/completions`,
+      `${LLM_CONFIG.baseURL}/completions`,
       requestBody,
       {
         headers: {
@@ -283,8 +282,20 @@ const enhancePrompt = async (originalPrompt, imageType) => {
       }
     );
 
-    if (response.data && response.data.choices && response.data.choices[0]) {
-      const enhancedPrompt = response.data.choices[0].message.content.trim();
+    console.log('📥 LLM Response:', {
+      status: response.status,
+      headers: response.headers,
+      data: JSON.stringify(response.data, null, 2)
+    });
+
+    console.log('📥 Response data type:', typeof response.data);
+    if (response.data) {
+      console.log('📥 Response data keys:', Object.keys(response.data));
+    }
+
+    // Handle x.ai API response format
+    if (response.data?.choices?.[0]?.text) {
+      const enhancedPrompt = response.data.choices[0].text.trim();
       
       // Validate enhanced prompt
       if (!enhancedPrompt || enhancedPrompt.length < 10) {
@@ -292,9 +303,10 @@ const enhancePrompt = async (originalPrompt, imageType) => {
         return originalPrompt;
       }
       
-      // Check if the enhanced prompt is significantly different
-      if (enhancedPrompt.toLowerCase() === originalPrompt.toLowerCase()) {
-        console.warn('⚠️ Enhanced prompt identical to original, using original');
+      // Check if the enhanced prompt is significantly different and not just a repeat
+      if (enhancedPrompt.toLowerCase() === originalPrompt.toLowerCase() ||
+          enhancedPrompt.toLowerCase().includes('enhance this design prompt')) {
+        console.warn('⚠️ Enhanced prompt identical or invalid, using original');
         return originalPrompt;
       }
       
@@ -305,11 +317,12 @@ const enhancePrompt = async (originalPrompt, imageType) => {
       return originalPrompt;
     }
   } catch (error) {
-    console.error('LLM enhancement error:', {
+    console.error('🚨 LLM enhancement error:', {
       message: error.message,
       status: error.response?.status,
       statusText: error.response?.statusText,
-      data: error.response?.data
+      data: error.response?.data,
+      stack: error.stack
     });
     
     // Handle specific error cases
@@ -431,6 +444,46 @@ app.get('/api/images', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to list images'
+    });
+  }
+});
+
+// Test endpoint for LLM enhancement
+app.post('/api/test-enhance', async (req, res) => {
+  try {
+    const { prompt, imageType = 'logo' } = req.body;
+
+    if (!prompt || !prompt.trim()) {
+      return res.status(400).json({ error: 'Prompt is required' });
+    }
+
+    if (!['logo', 'icon'].includes(imageType)) {
+      return res.status(400).json({ error: 'Image type must be either "logo" or "icon"' });
+    }
+
+    const originalPrompt = prompt.trim();
+    const enhancedPrompt = await enhancePrompt(originalPrompt, imageType);
+
+    res.json({
+      success: true,
+      data: {
+        originalPrompt,
+        enhancedPrompt,
+        imageType,
+        llmConfig: {
+          enabled: LLM_CONFIG.enabled,
+          model: LLM_CONFIG.modelName,
+          baseURL: LLM_CONFIG.baseURL,
+          hasKey: !!LLM_CONFIG.apiKey,
+          useSharedKey: LLM_CONFIG.useSharedKey
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Enhancement test error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to test prompt enhancement'
     });
   }
 });

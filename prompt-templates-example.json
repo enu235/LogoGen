@@ -1,0 +1,30 @@
+{
+  "logo": {
+    "template": "Enhance this design prompt by adding specific visual details. Keep it concise and focused only on the design elements. No code or formatting:\n\"${prompt}\"\nEnhanced version:",
+    "description": "Template for enhancing logo design prompts. Adds specific visual details, style elements, and color suggestions while maintaining brand identity.",
+    "examples": [
+      {
+        "input": "A coffee shop logo with beans",
+        "output": "A coffee shop logo featuring a stylized coffee bean with gradients and subtle shadows for depth, surrounded by abstract steam swirls in warm brown and beige tones."
+      },
+      {
+        "input": "A tree logo",
+        "output": "An elegant willow tree logo with flowing branches and natural green tones, featuring delicate leaf details and a strong trunk base."
+      }
+    ]
+  },
+  "icon": {
+    "template": "Enhance this design prompt by adding specific visual details. Keep it concise and focused only on the design elements. No code or formatting:\n\"${prompt}\"\nEnhanced version:",
+    "description": "Template for enhancing icon design prompts. Focuses on simplicity, recognizability, and essential visual elements.",
+    "examples": [
+      {
+        "input": "Simple mountain peak",
+        "output": "A simple mountain peak with a snow-capped summit and jagged rocks."
+      },
+      {
+        "input": "Chat bubble icon",
+        "output": "A minimalist chat bubble icon with smooth rounded corners and a subtle point at the bottom, perfect for small-scale display."
+      }
+    ]
+  }
+} 
