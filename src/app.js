@@ -3,6 +3,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const config = require('./config');
 const fileService = require('./services/fileService');
+const databaseService = require('./services/databaseService');
 const apiRoutes = require('./routes/apiRoutes');
 
 /**
@@ -43,6 +44,9 @@ class Application {
     // Static files
     this.app.use(express.static('public'));
 
+    // Request logging middleware
+    this.app.use(this.requestLoggingMiddleware.bind(this));
+
     // Request logging in development
     if (config.isDevelopment()) {
       this.app.use((req, res, next) => {
@@ -50,6 +54,39 @@ class Application {
         next();
       });
     }
+  }
+
+  /**
+   * Request logging middleware
+   */
+  requestLoggingMiddleware(req, res, next) {
+    const startTime = process.hrtime.bigint();
+    
+    // Store response data for logging
+    const originalSend = res.send;
+    res.send = function(data) {
+      res.locals.responseData = data;
+      return originalSend.call(this, data);
+    };
+
+    // Log when response finishes
+    res.on('finish', async () => {
+      try {
+        const endTime = process.hrtime.bigint();
+        const duration = Number(endTime - startTime) / 1000000; // Convert to milliseconds
+        
+        // Don't log static file requests or health checks in production
+        if (config.isProduction() && (req.path.startsWith('/generated') || req.path === '/api/health')) {
+          return;
+        }
+        
+        await databaseService.logApiRequest(req, res, duration);
+      } catch (error) {
+        console.error('❌ Request logging failed:', error);
+      }
+    });
+
+    next();
   }
 
   /**
@@ -64,8 +101,21 @@ class Application {
    */
   initializeErrorHandling() {
     // Global error handler
-    this.app.use((error, req, res, next) => {
+    this.app.use(async (error, req, res, next) => {
       console.error('💥 Unhandled error:', error);
+      
+      // Log error to database
+      try {
+        await databaseService.logSystemEvent('application_error', 'ExpressApp', 'error', error.message, {
+          stack: error.stack,
+          endpoint: req.path,
+          method: req.method,
+          userAgent: req.get('user-agent'),
+          userIP: req.ip
+        });
+      } catch (logError) {
+        console.error('❌ Failed to log error to database:', logError);
+      }
       
       // Don't leak error details in production
       const errorMessage = config.isProduction() 
@@ -93,16 +143,29 @@ class Application {
   }
 
   /**
-   * Initialize application (setup directories, etc.)
+   * Initialize application (setup directories, database, etc.)
    */
   async initialize() {
     try {
+      console.log('🔄 Initializing application...');
+      
       // Create necessary directories
       await fileService.createDirectories();
+      
+      // Initialize database service
+      await databaseService.initialize();
       
       // Initialize prompt enhancement service
       const promptEnhancementService = require('./services/promptEnhancementService');
       await promptEnhancementService.initializeTemplates();
+      
+      // Log application startup
+      await databaseService.logSystemEvent('app_startup', 'Application', 'info', 'Application initialized successfully', {
+        environment: config.serverConfig.nodeEnv,
+        port: config.serverConfig.port,
+        apiBaseUrl: config.apiConfig.baseURL,
+        llmEnabled: config.llmConfig.enabled
+      });
       
       console.log('✅ Application initialized successfully');
       return true;
@@ -132,7 +195,16 @@ class Application {
         console.log('   GET  /api/health    - Health check');
         console.log('   GET  /api/images    - List images');
         console.log('   GET  /api/config    - Get configuration');
+        console.log('   GET  /api/stats     - Database statistics');
         console.log('\n✨ Ready to generate amazing logos and icons!\n');
+        
+        // Log server start
+        databaseService.logSystemEvent('server_start', 'Application', 'info', 'HTTP server started', {
+          port,
+          environment: config.serverConfig.nodeEnv
+        }).catch(error => {
+          console.error('❌ Failed to log server start:', error);
+        });
       });
 
       return this.server;
@@ -146,9 +218,18 @@ class Application {
    * Stop the server gracefully
    */
   async stop() {
-    return new Promise((resolve) => {
+    return new Promise(async (resolve) => {
       if (this.server) {
         console.log('🛑 Shutting down server gracefully...');
+        
+        // Log shutdown
+        try {
+          await databaseService.logSystemEvent('server_shutdown', 'Application', 'info', 'HTTP server shutting down');
+          await databaseService.shutdown();
+        } catch (error) {
+          console.error('❌ Failed to log shutdown or close database:', error);
+        }
+        
         this.server.close(() => {
           console.log('✅ Server shut down successfully');
           resolve();
