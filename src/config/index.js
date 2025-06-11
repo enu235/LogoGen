@@ -76,6 +76,19 @@ class ConfigService {
       generatedOriginal: 'public/generated/original',
       temp: 'temp'
     };
+
+    // Database Configuration
+    this.database = {
+      enabled: process.env.ENABLE_DATABASE_LOGGING === 'true',
+      type: process.env.DATABASE_TYPE || 'mock', // mock, postgresql, mongodb, cosmos
+      logTransactions: process.env.LOG_TRANSACTIONS === 'true' || process.env.ENABLE_DATABASE_LOGGING === 'true',
+      logApiRequests: process.env.LOG_API_REQUESTS === 'true' || process.env.ENABLE_DATABASE_LOGGING === 'true',
+      logSystemEvents: process.env.LOG_SYSTEM_EVENTS === 'true' || process.env.ENABLE_DATABASE_LOGGING === 'true',
+      connectionString: process.env.DATABASE_CONNECTION_STRING,
+      retryAttempts: parseInt(process.env.DATABASE_RETRY_ATTEMPTS) || 3,
+      retryDelay: parseInt(process.env.DATABASE_RETRY_DELAY) || 1000,
+      dataDirectory: process.env.DATABASE_DATA_DIR || 'data/database'
+    };
   }
 
   // Getters for easy access
@@ -84,6 +97,7 @@ class ConfigService {
   get llmConfig() { return this.llm; }
   get serverConfig() { return this.server; }
   get directoryConfig() { return this.directories; }
+  get databaseConfig() { return this.database; }
 
   // Helper methods
   isProduction() {
@@ -105,6 +119,16 @@ class ConfigService {
       console.log(`   LLM Model: ${this.llm.modelName}`);
       console.log(`   LLM API Key configured: ${!!this.llm.apiKey}`);
       console.log(`   Using shared API key: ${this.llm.useSharedKey}`);
+    }
+    console.log(`💾 Database Logging: ${this.database.enabled ? 'Enabled' : 'Disabled'}`);
+    if (this.database.enabled) {
+      console.log(`   Database Type: ${this.database.type}`);
+      console.log(`   Log Transactions: ${this.database.logTransactions}`);
+      console.log(`   Log API Requests: ${this.database.logApiRequests}`);
+      console.log(`   Log System Events: ${this.database.logSystemEvents}`);
+      if (this.database.type === 'mock') {
+        console.log(`   Data Directory: ${this.database.dataDirectory}`);
+      }
     }
   }
 }

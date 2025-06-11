@@ -6,6 +6,7 @@ const imageGenerationService = require('../services/imageGenerationService');
 const imageProcessingService = require('../services/imageProcessingService');
 const promptEnhancementService = require('../services/promptEnhancementService');
 const databaseService = require('../services/databaseService');
+const { v4: uuidv4 } = require('uuid');
 
 const router = express.Router();
 
@@ -25,8 +26,16 @@ router.post('/api/generate', async (req, res) => {
   try {
     const { prompt, imageType = 'logo', enhancePrompt: enhancePromptFlag } = req.body;
     
+    // Log system event for image generation start
+    await databaseService.logSystemEvent('image_generation_start', {
+      message: 'Starting image generation process',
+      prompt: prompt,
+      imageType,
+      enhancePromptRequested: enhancePromptFlag !== false
+    });
+    
     // Start performance timer
-    databaseService.startTimer(operationId);
+    databaseService.startPerformanceTimer(operationId);
     
     // Validate input
     if (!prompt || !prompt.trim()) {
@@ -55,110 +64,120 @@ router.post('/api/generate', async (req, res) => {
       userAgent: req.get('user-agent')
     };
     
-    // Enhance prompt if requested and available
-    let enhancedPrompt = originalPrompt;
-    const shouldEnhance = promptEnhancementService.isEnhancementEnabled() && 
-                         (enhancePromptFlag === undefined || enhancePromptFlag === true || enhancePromptFlag === 'true');
+    let finalPrompt = prompt;
+    let enhancedPrompt = null;
     
-    if (shouldEnhance) {
-      enhancedPrompt = await promptEnhancementService.enhancePrompt(originalPrompt, imageType);
-      databaseService.addTimerCheckpoint(operationId, 'prompt_enhancement');
+    // Enhance prompt if requested
+    if (enhancePromptFlag !== false) {
+      databaseService.addPerformanceCheckpoint(operationId, 'prompt_enhancement_start');
+      
+      try {
+        enhancedPrompt = await promptEnhancementService.enhancePrompt(prompt, imageType);
+        if (enhancedPrompt && enhancedPrompt !== prompt) {
+          finalPrompt = enhancedPrompt;
+        }
+        databaseService.addPerformanceCheckpoint(operationId, 'prompt_enhancement_complete');
+      } catch (error) {
+        console.warn('Prompt enhancement failed, using original prompt:', error.message);
+        databaseService.addPerformanceCheckpoint(operationId, 'prompt_enhancement_failed');
+      }
     }
     
     requestData.enhancedPrompt = enhancedPrompt;
-    
-    // Create final prompt with styling
-    const finalPrompt = imageGenerationService.createFinalPrompt(enhancedPrompt, imageType);
     requestData.finalPrompt = finalPrompt;
     
     // Generate image
-    const imageUrl = await imageGenerationService.generateImage(finalPrompt, imageType);
-    databaseService.addTimerCheckpoint(operationId, 'image_generation');
+    databaseService.addPerformanceCheckpoint(operationId, 'image_generation_start');
+    const generatedImageUrl = await imageGenerationService.generateImage(finalPrompt, imageType);
+    databaseService.addPerformanceCheckpoint(operationId, 'image_generation_complete');
     
-    // Process and save image
-    const processedImage = await imageProcessingService.downloadAndProcessImage(imageUrl, imageType, originalPrompt);
-    databaseService.addTimerCheckpoint(operationId, 'image_processing');
+    // Process image
+    databaseService.addPerformanceCheckpoint(operationId, 'image_processing_start');
+    const processedImage = await imageProcessingService.downloadAndProcessImage(generatedImageUrl, imageType, originalPrompt);
+    databaseService.addPerformanceCheckpoint(operationId, 'image_processing_complete');
     
-    // Get performance data
-    const performanceData = databaseService.endTimer(operationId);
+    // End performance timer and log
+    const performanceData = databaseService.endPerformanceTimer(operationId, true);
     
     // Prepare response data for logging
     const responseData = {
-      imageUrl,
-      processedFilename: processedImage.filename,
+      imageUrl: processedImage.imageUrl,
+      processedFilename: processedImage.processedFilename,
       originalFilename: processedImage.originalFilename,
-      processedFilePath: processedImage.path,
-      originalFilePath: processedImage.originalPath,
-      fileSize: processedImage.size,
+      processedFilePath: processedImage.processedFilePath,
+      originalFilePath: processedImage.originalFilePath,
+      fileSize: processedImage.fileSize,
       dimensions: processedImage.dimensions
     };
     
     // Log successful transaction
-    await databaseService.logImageGeneration(
-      requestData,
-      responseData,
-      {
-        totalDuration: performanceData.totalDuration,
-        promptEnhancementDuration: performanceData.checkpoints.prompt_enhancement || 0,
-        imageGenerationDuration: performanceData.checkpoints.image_generation || 0,
-        imageProcessingDuration: performanceData.checkpoints.image_processing || 0
-      }
-    );
+    await databaseService.logImageGeneration({
+      operationId,
+      userIP: req.ip,
+      userAgent: req.get('user-agent'),
+      originalPrompt: prompt,
+      enhancedPrompt,
+      finalPrompt,
+      imageType,
+      enhancePromptRequested: enhancePromptFlag !== false,
+      success: true,
+      imageUrl: processedImage.imageUrl,
+      processedFilename: processedImage.processedFilename,
+      originalFilename: processedImage.originalFilename,
+      processedFilePath: processedImage.processedFilePath,
+      originalFilePath: processedImage.originalFilePath,
+      fileSize: processedImage.fileSize,
+      dimensions: processedImage.dimensions,
+      performance: performanceData,
+      apiModel: config.apiConfig.modelName,
+      apiBaseUrl: config.apiConfig.baseURL
+    });
     
     // Send response
-    const responsePayload = {
+    res.json({
       success: true,
-      data: {
-        ...processedImage,
-        originalPrompt,
-        enhancedPrompt: promptEnhancementService.isEnhancementEnabled() ? enhancedPrompt : null,
-        finalPrompt,
-        imageType,
-        generatedAt: new Date().toISOString(),
-        performanceMs: Math.round(performanceData.totalDuration)
-      }
-    };
-    
-    res.json(responsePayload);
+      imageUrl: processedImage.imageUrl,
+      processedFilename: processedImage.processedFilename,
+      originalFilename: processedImage.originalFilename,
+      prompt: finalPrompt,
+      originalPrompt: prompt,
+      enhancedPrompt: enhancedPrompt,
+      enhancePromptDetected: !!enhancedPrompt && enhancedPrompt !== prompt,
+      imageType,
+      fileSize: processedImage.fileSize,
+      dimensions: processedImage.dimensions
+    });
     
     console.log(`✅ Image generation completed successfully: ${processedImage.filename} (${Math.round(performanceData.totalDuration)}ms)`);
     
   } catch (error) {
-    console.error('❌ Image generation failed:', error);
-    
-    // Get performance data (if available)
-    const performanceData = databaseService.endTimer(operationId) || { totalDuration: 0 };
-    
+    console.error('Error generating image:', error);
+
     // Log failed transaction
-    try {
-      const requestData = {
-        originalPrompt: req.body.prompt,
-        imageType: req.body.imageType || 'logo',
-        enhancePromptRequested: req.body.enhancePrompt !== false,
-        userIP: req.ip,
-        userAgent: req.get('user-agent'),
-        enhancedPrompt: null,
-        finalPrompt: null
-      };
-      
-      await databaseService.logImageGeneration(
-        requestData,
-        null,
-        {
-          totalDuration: performanceData.totalDuration,
-          promptEnhancementDuration: 0,
-          imageGenerationDuration: 0,
-          imageProcessingDuration: 0
-        },
-        { message: error.message }
-      );
-    } catch (logError) {
-      console.error('❌ Failed to log failed transaction:', logError);
-    }
-    
+    await databaseService.logImageGeneration({
+      operationId,
+      userIP: req.ip,
+      userAgent: req.get('user-agent'),
+      originalPrompt: prompt,
+      enhancedPrompt,
+      finalPrompt,
+      imageType,
+      enhancePromptRequested: enhancePromptFlag !== false,
+      success: false,
+      errorMessage: error.message,
+      performance: databaseService.endPerformanceTimer(operationId)
+    });
+
+    // Log system error event
+    await databaseService.logSystemEvent('image_generation_error', {
+      message: 'Image generation failed',
+      prompt: prompt,
+      imageType
+    }, error);
+
     res.status(500).json({
       success: false,
-      error: error.message || 'Failed to generate image'
+      error: error.message
     });
   }
 });
@@ -166,43 +185,35 @@ router.post('/api/generate', async (req, res) => {
 /**
  * Health check endpoint
  */
-router.get('/api/health', async (req, res) => {
+router.get('/health', async (req, res) => {
   try {
-    const directories = await fileService.checkDirectories();
-    const dbStats = await databaseService.getStats();
-    
-    res.json({
+    const health = {
       status: 'healthy',
       timestamp: new Date().toISOString(),
-      config: {
-        apiBaseUrl: config.apiConfig.baseURL,
-        modelName: config.apiConfig.modelName,
-        hasApiKey: !!config.apiConfig.apiKey,
-        logoSize: config.imageConfig.logoSize,
-        iconSize: config.imageConfig.iconSize,
-        llmEnhancement: {
-          enabled: config.llmConfig.enabled,
-          llmBaseUrl: config.llmConfig.baseURL,
-          llmModel: config.llmConfig.modelName,
-          hasLlmApiKey: !!config.llmConfig.apiKey,
-          usingSharedKey: config.llmConfig.useSharedKey,
-          available: promptEnhancementService.isEnhancementEnabled()
-        },
-        imageProcessing: imageProcessingService.getProcessingConfig(),
-        database: {
-          isConnected: dbStats.isInitialized,
-          totalRecords: dbStats.totalRecords,
-          modelsCount: Object.keys(dbStats.models || {}).length
-        }
-      },
-      directories
-    });
+      services: {
+        imageGeneration: await imageGenerationService.healthCheck(),
+        imageProcessing: await imageProcessingService.healthCheck(),
+        promptEnhancement: await promptEnhancementService.healthCheck(),
+        database: await databaseService.healthCheck()
+      }
+    };
+
+    // Check if any service is unhealthy
+    const allHealthy = Object.values(health.services).every(
+      service => service.status === 'healthy' || service.status === 'disabled'
+    );
+
+    if (!allHealthy) {
+      health.status = 'degraded';
+      res.status(503);
+    }
+
+    res.json(health);
   } catch (error) {
-    console.error('❌ Health check failed:', error);
     res.status(500).json({
-      status: 'unhealthy',
-      error: error.message,
-      timestamp: new Date().toISOString()
+      status: 'error',
+      timestamp: new Date().toISOString(),
+      error: error.message
     });
   }
 });

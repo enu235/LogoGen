@@ -153,11 +153,51 @@ class Application {
       await fileService.createDirectories();
       
       // Initialize database service
-      await databaseService.initialize();
+      try {
+        await databaseService.initialize();
+      } catch (error) {
+        console.error('Failed to initialize database service:', error);
+        // Continue without database logging
+      }
       
       // Initialize prompt enhancement service
       const promptEnhancementService = require('./services/promptEnhancementService');
-      await promptEnhancementService.initializeTemplates();
+      try {
+        await promptEnhancementService.initialize();
+      } catch (error) {
+        console.error('Failed to initialize prompt enhancement service:', error);
+        // Continue without prompt enhancement
+      }
+      
+      // Request logging middleware (only if database logging is enabled)
+      if (config.databaseConfig.enabled && config.databaseConfig.logApiRequests) {
+        this.app.use((req, res, next) => {
+          const startTime = Date.now();
+          
+          // Capture response data
+          const originalSend = res.send;
+          res.send = function(data) {
+            res.locals.responseData = data;
+            return originalSend.call(this, data);
+          };
+
+          // Log request after response
+          res.on('finish', async () => {
+            const duration = Date.now() - startTime;
+            await databaseService.logApiRequest({
+              method: req.method,
+              endpoint: req.path,
+              userIP: req.ip,
+              userAgent: req.get('user-agent'),
+              statusCode: res.statusCode,
+              duration,
+              timestamp: new Date().toISOString()
+            });
+          });
+
+          next();
+        });
+      }
       
       // Log application startup
       await databaseService.logSystemEvent('app_startup', 'Application', 'info', 'Application initialized successfully', {
