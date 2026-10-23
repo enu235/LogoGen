@@ -138,7 +138,7 @@ docker compose down
 1. **Rate Limits**: Check if you've exceeded API rate limits
 2. **API Key**: Verify API key is valid and has credits
 3. **Network**: Ensure internet connection is stable
-4. **Model**: Verify the AI model (grok-2-image) is available
+4. **Model**: Verify the image model (grok-imagine-image-2.0) is available
 
 ## 🔐 Security Features
 

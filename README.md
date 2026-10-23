@@ -31,7 +31,7 @@ cp .env.example .env
 ```
 API_KEY=your_api_key_here
 API_BASE_URL=https://api.x.ai/v1
-MODEL_NAME=grok-vision-beta
+MODEL_NAME=grok-imagine-image-2.0
 ```
 
 4. Create required directories (for filesystem storage):
@@ -68,10 +68,10 @@ npm run dev
 
 - `API_KEY`: Your API key for the image generation service
 - `API_BASE_URL`: Base URL for the API (default: https://api.x.ai/v1)
-- `MODEL_NAME`: Model name to use for generation (default: grok-vision-beta)
+- `MODEL_NAME`: Model name to use for generation (default: grok-imagine-image-2.0)
 - `PORT`: Port to run the server on (default: 3000)
 - `ENABLE_PROMPT_ENHANCEMENT`: Set to `true` to enable prompt enhancement with LLM, `false` to disable
-- `LLM_API_KEY`, `LLM_API_BASE_URL`, `LLM_MODEL_NAME`: LLM settings for prompt enhancement
+- `LLM_API_KEY`, `LLM_API_BASE_URL`, `LLM_MODEL_NAME`: prompt enhancement settings (default model: grok-4.7)
 - `USE_SHARED_API_KEY`: Set to `true` to use the same API key for both image and LLM if supported
 
 ## Usage

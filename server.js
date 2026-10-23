@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 const express = require('express');
 const axios = require('axios');
 const sharp = require('sharp');
@@ -6,7 +6,6 @@ const cors = require('cors');
 const helmet = require('helmet');
 const path = require('path');
 const fs = require('fs').promises;
-const xml2js = require('xml2js');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -38,13 +37,11 @@ const createDirectories = async () => {
   }
 };
 
-createDirectories();
-
 // Configuration
 const API_CONFIG = {
   baseURL: process.env.API_BASE_URL || 'https://api.x.ai/v1',
   apiKey: process.env.API_KEY,
-  modelName: process.env.MODEL_NAME || 'grok-vision-beta'
+  modelName: process.env.MODEL_NAME || 'grok-imagine-image-2.0'
 };
 
 const IMAGE_CONFIG = {
@@ -57,7 +54,7 @@ const IMAGE_CONFIG = {
 const LLM_CONFIG = {
   enabled: process.env.ENABLE_PROMPT_ENHANCEMENT === 'true',
   baseURL: process.env.LLM_API_BASE_URL || process.env.API_BASE_URL || 'https://api.x.ai/v1',
-  modelName: process.env.LLM_MODEL_NAME || 'grok-beta',
+  modelName: process.env.LLM_MODEL_NAME || 'grok-4.7',
   useSharedKey: process.env.USE_SHARED_API_KEY === 'true'
 };
 
@@ -87,20 +84,33 @@ if (LLM_CONFIG.enabled && !LLM_CONFIG.apiKey) {
 
 let promptTemplates = {};
 
-// Load prompt templates
+// Load prompt templates. A fresh clone only has the example file.
 const loadPromptTemplates = async () => {
+  const primaryPath = './prompt-templates.json';
+  const fallbackPath = './prompt-templates-example.json';
+
+  const readTemplates = async (filePath) => {
+    const jsonData = await fs.readFile(filePath, 'utf-8');
+    return JSON.parse(jsonData);
+  };
+
   try {
-    const jsonData = await fs.readFile('./prompt-templates.json', 'utf-8');
-    promptTemplates = JSON.parse(jsonData);
+    promptTemplates = await readTemplates(primaryPath);
     console.log('✅ Prompt templates loaded successfully:', Object.keys(promptTemplates));
   } catch (error) {
-    console.error('❌ Failed to load prompt templates:', error);
-    process.exit(1);
+    if (error.code !== 'ENOENT') {
+      console.error('❌ Failed to load prompt templates:', error);
+      process.exit(1);
+    }
+    try {
+      promptTemplates = await readTemplates(fallbackPath);
+      console.log('✅ prompt-templates.json not found; using prompt-templates-example.json:', Object.keys(promptTemplates));
+    } catch (fallbackError) {
+      console.error('❌ Failed to load prompt templates:', fallbackError);
+      process.exit(1);
+    }
   }
 };
-
-// Call this function at server startup
-loadPromptTemplates();
 
 // Image generation function
 const generateImage = async (prompt, imageType = 'logo') => {
@@ -247,17 +257,18 @@ const enhancePrompt = async (originalPrompt, imageType) => {
     return originalPrompt;
   }
   try {
-    const template = promptTemplates[imageType] || promptTemplates.logo;
+    const entry = promptTemplates[imageType] || promptTemplates.logo;
+    const template = typeof entry === 'string' ? entry : entry?.template;
+    if (typeof template !== 'string') return originalPrompt;
     const prompt = template.replace('${prompt}', originalPrompt);
     const requestBody = {
       model: LLM_CONFIG.modelName,
-      prompt: prompt,
-      max_tokens: 100,
-      temperature: 0.7,
-      stop: ["\n", "```"]
+      messages: [{ role: 'user', content: prompt }],
+      max_completion_tokens: 100,
+      temperature: 0.7
     };
     const response = await axios.post(
-      `${LLM_CONFIG.baseURL}/completions`,
+      `${LLM_CONFIG.baseURL}/chat/completions`,
       requestBody,
       {
         headers: {
@@ -267,8 +278,9 @@ const enhancePrompt = async (originalPrompt, imageType) => {
         timeout: 30000
       }
     );
-    if (response.data?.choices?.[0]?.text) {
-      const enhancedPrompt = response.data.choices[0].text.trim();
+    const content = response.data?.choices?.[0]?.message?.content;
+    if (typeof content === 'string' && content.trim()) {
+      const enhancedPrompt = content.trim();
       if (!enhancedPrompt || enhancedPrompt.length < 10) return originalPrompt;
       if (enhancedPrompt.toLowerCase() === originalPrompt.toLowerCase() || enhancedPrompt.toLowerCase().includes('enhance this design prompt')) return originalPrompt;
       return enhancedPrompt;
@@ -402,16 +414,23 @@ app.use((req, res) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 LogoGen server running on port ${PORT}`);
-  console.log(`🔧 API Base URL: ${API_CONFIG.baseURL}`);
-  console.log(`🤖 Model: ${API_CONFIG.modelName}`);
-  console.log(`🔑 API Key configured: ${!!API_CONFIG.apiKey}`);
-  console.log(`🧠 LLM Prompt Enhancement: Enabled: ${LLM_CONFIG.enabled}`);
-  if (LLM_CONFIG.enabled) {
-    console.log(`   LLM Base URL: ${LLM_CONFIG.baseURL}`);
-    console.log(`   LLM Model: ${LLM_CONFIG.modelName}`);
-    console.log(`   LLM API Key configured: ${!!LLM_CONFIG.apiKey}`);
-    console.log(`   Using shared API key: ${LLM_CONFIG.useSharedKey}`);
-  }
-});
+const startServer = async () => {
+  await createDirectories();
+  await loadPromptTemplates();
+
+  app.listen(PORT, () => {
+    console.log(`🚀 LogoGen server running on port ${PORT}`);
+    console.log(`🔧 API Base URL: ${API_CONFIG.baseURL}`);
+    console.log(`🤖 Model: ${API_CONFIG.modelName}`);
+    console.log(`🔑 API Key configured: ${!!API_CONFIG.apiKey}`);
+    console.log(`🧠 LLM Prompt Enhancement: Enabled: ${LLM_CONFIG.enabled}`);
+    if (LLM_CONFIG.enabled) {
+      console.log(`   LLM Base URL: ${LLM_CONFIG.baseURL}`);
+      console.log(`   LLM Model: ${LLM_CONFIG.modelName}`);
+      console.log(`   LLM API Key configured: ${!!LLM_CONFIG.apiKey}`);
+      console.log(`   Using shared API key: ${LLM_CONFIG.useSharedKey}`);
+    }
+  });
+};
+
+startServer();

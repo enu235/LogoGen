@@ -8,10 +8,10 @@ WORKDIR /app
 COPY package*.json ./
 
 # Audit dependencies before installing
-RUN npm audit --audit-level high --omit dev || true
+RUN npm audit --audit-level=high --omit=dev
 
 # Install dependencies
-RUN npm ci --only=production && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 
 # Production stage
 FROM node:24-alpine AS production

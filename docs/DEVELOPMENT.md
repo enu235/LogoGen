@@ -15,7 +15,7 @@ cp .env.example .env
 ```bash
 API_KEY=your_actual_api_key
 API_BASE_URL=https://api.x.ai/v1
-MODEL_NAME=grok-vision-beta
+MODEL_NAME=grok-imagine-image-2.0
 ```
 
 3. **Start with Docker:**
@@ -84,7 +84,8 @@ Check server status and configuration.
 |----------|---------|-------------|
 | `API_KEY` | (required) | Your image generation API key |
 | `API_BASE_URL` | `https://api.x.ai/v1` | API endpoint |
-| `MODEL_NAME` | `grok-vision-beta` | Model to use |
+| `MODEL_NAME` | `grok-imagine-image-2.0` | Model to use |
+| `LLM_MODEL_NAME` | `grok-4.7` | Model used for prompt enhancement |
 | `PORT` | `3000` | Server port |
 | `LOGO_SIZE` | `1024` | Logo output size in pixels |
 | `ICON_SIZE` | `64` | Icon output size in pixels |
