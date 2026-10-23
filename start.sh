@@ -12,7 +12,7 @@ if [ ! -f .env ]; then
     echo "✅ Created .env file. Please edit it with your API configuration:"
     echo "   - API_KEY: Your image generation API key"
     echo "   - API_BASE_URL: Your API endpoint (default: https://api.x.ai/v1)"
-    echo "   - MODEL_NAME: Model name to use (default: grok-vision-beta)"
+    echo "   - MODEL_NAME: Model name to use (default: grok-imagine-image-2.0)"
     echo ""
     echo "After configuring .env, run this script again."
     exit 1

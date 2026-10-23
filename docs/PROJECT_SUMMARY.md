@@ -70,7 +70,7 @@ Edit `.env` with your API credentials:
 ```bash
 API_KEY=your_api_key_here
 API_BASE_URL=https://api.x.ai/v1
-MODEL_NAME=grok-vision-beta
+MODEL_NAME=grok-imagine-image-2.0
 ```
 
 ## 🎯 Usage

@@ -28,7 +28,7 @@ Edit `.env` with your production values:
 # Required
 API_KEY=your_production_api_key
 API_BASE_URL=https://api.x.ai/v1
-MODEL_NAME=grok-vision-beta
+MODEL_NAME=grok-imagine-image-2.0
 
 # Optional customization
 PORT=3000
@@ -126,7 +126,7 @@ sudo systemctl reload nginx
 
 ### Optional
 - `API_BASE_URL`: API endpoint (default: https://api.x.ai/v1)
-- `MODEL_NAME`: Model name (default: grok-vision-beta)
+- `MODEL_NAME`: Model name (default: grok-imagine-image-2.0)
 - `PORT`: Server port (default: 3000)
 - `NODE_ENV`: Environment (development/production)
 - `LOGO_SIZE`: Logo output size in pixels (default: 1024)

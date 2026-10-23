@@ -23,7 +23,7 @@ FROM node:24-alpine AS production
 #### 2. **Enhanced Security Measures**
 ```dockerfile
 # Added comprehensive security auditing
-RUN npm audit --audit-level high --omit dev || true
+RUN npm audit --audit-level=high --omit=dev
 
 # Enhanced Alpine package security with cache cleanup
 RUN apk update && \
